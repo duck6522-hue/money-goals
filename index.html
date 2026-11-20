@@ -330,7 +330,26 @@ function renderHome() {
     <div class="goals">${goals.map(g => goalCard(g, today)).join('')}</div>
     <button class="text" data-act="goal-new" style="margin-top:10px">＋ 目標を追加</button>`;
 }
-function renderDay() { $('#v-day').innerHTML = ''; }
+function renderDay() {
+  const d = dayView, today = dayStr();
+  const ens = state.entries.filter(e => e.date === d && goalById(e.goalId)).sort((a, b) => a.createdAt - b.createdAt);
+  const sums = new Map();
+  for (const e of ens) sums.set(e.goalId, (sums.get(e.goalId) || 0) + e.amount);
+  const rows = state.goals.filter(g => sums.has(g.id)).map(g => {
+    const p = Calc.progress(g, state.entries, d), daily = g.amount / p.totalDays, v = sums.get(g.id);
+    const n = ens.filter(e => e.goalId === g.id).length, over = g.type === 'limit' && v > daily;
+    return `<button class="row" data-act="goal-open" data-id="${g.id}" style="--gc:${over ? 'var(--danger)' : g.color}"><span class="dot" style="--gc:${g.color}"></span>
+      <span class="tx"><b>${esc(g.name)}</b><small>${TYPE[g.type]}・1日の目安 ${yen(daily)}</small><span class="meter"><i style="width:${Math.max(0, Math.min(100, v / daily * 100))}%"></i></span></span>
+      <span class="amt">${yen(v)}<small>${n}件${over ? '・<span class="bad">目安超え</span>' : ''}</small></span></button>`;
+  });
+  $('#v-day').innerHTML = `<div class="mnav"><button data-act="day" data-d="-1" aria-label="前の日">‹</button>
+      <label>${fmtDay(d)}<input type="date" id="dayPick" value="${d}" aria-label="日付をえらぶ"></label>
+      <button data-act="day" data-d="1" aria-label="次の日">›</button>${d !== today ? '<button class="today" data-act="day" data-d="0">今日</button>' : ''}</div>
+    ${ens.length ? `<div class="sec"><span>カテゴリ別の合計</span></div><div class="card">${rows.join('')}</div>
+      <div class="sec"><span>記録（${ens.length}件）</span><span>タップで編集</span></div><div class="card">${ens.map(e => entryRow(e)).join('')}</div>`
+      : `<div class="empty"><b>${d === today ? '今日' : 'この日'}の記録はありません</b></div>`}
+    ${state.goals.length ? `<button class="primary wide" data-act="add" data-date="${d}" style="margin-top:16px">＋ ${d === today ? '今日' : fmtDay(d)}に記録</button>` : ''}`;
+}
 function renderMonth() { $('#v-month').innerHTML = ''; }
 
 /* ---------- トースト ---------- */
@@ -464,10 +483,15 @@ document.addEventListener('click', e => {
   else if (a === 'goal-archive') archiveGoal(d.id);
   else if (a === 'goal-del') deleteGoal(d.id);
   else if (a === 'goal-open') goalDetail(d.id);
+  else if (a === 'day') { dayView = +d.d ? addDays(dayView, +d.d) : dayStr(); render(); }
   else if (a === 'add') entrySheet({ goalId: d.id, date: d.date });
   else if (a === 'entry-edit') entrySheet({ id: d.id });
   else if (a === 'entry-del') deleteEntry(d.id);
   else if (a === 'undo') { if (undoSnap) { state = normalize(JSON.parse(undoSnap)); undoSnap = null; $('#toast').hidden = true; commit(); } }
+});
+
+document.addEventListener('change', e => {
+  if (e.target.id === 'dayPick' && isDay(e.target.value)) { dayView = e.target.value; render(); }
 });
 
 render();
