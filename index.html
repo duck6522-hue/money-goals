@@ -528,11 +528,66 @@ function goalDetail(id) {
     <button type="button" class="primary wide" data-act="add" data-id="${g.id}">＋ ${esc(g.name)}に記録</button>`);
 }
 
+/* ---------- 設定 ---------- */
+function settingsSheet() {
+  const gs = state.goals;
+  openSheet(`<h2>設定<span class="sp"></span><button type="button" class="text" data-act="close">閉じる</button></h2>
+    <div class="f"><span>目標（上下で並べ替え）</span></div>
+    ${gs.length ? `<div class="card" style="background:var(--field);margin-top:-8px">${gs.map((g, i) => `<div class="mgr${g.archived ? ' off' : ''}">
+      <span class="tx"><i class="dot" style="--gc:${g.color}"></i><span>${esc(g.name)} <small>${g.archived ? 'アーカイブ中' : `${TYPE[g.type]}・${periodLabel(g)}`}</small></span></span>
+      <button type="button" class="ic" data-act="goal-move" data-id="${g.id}" data-d="-1" aria-label="上へ" ${i ? '' : 'disabled'}>↑</button>
+      <button type="button" class="ic" data-act="goal-move" data-id="${g.id}" data-d="1" aria-label="下へ" ${i < gs.length - 1 ? '' : 'disabled'}>↓</button>
+      <button type="button" data-act="goal-edit" data-id="${g.id}">編集</button></div>`).join('')}</div>` : '<p class="note">まだ目標はありません。</p>'}
+    <button type="button" data-act="goal-new">＋ 目標を追加</button>
+    <div class="f"><span>テーマ</span>${seg('theme', [['auto', '自動'], ['light', 'ライト'], ['dark', 'ダーク']], state.theme)}</div>
+    <div class="f"><span>バックアップ</span></div>
+    <div class="menu" style="margin-top:-8px">
+      <button type="button" data-act="export">書き出す<small>目標と記録をファイル（JSON）に保存します</small></button>
+      <button type="button" data-act="import">読み込む<small>書き出したファイルで、いまのデータを置き換えます</small></button>
+    </div>
+    <input type="file" id="importFile" accept="application/json,.json" hidden>
+    <p class="note">データはこの端末のブラウザの中だけに保存され、どこにも送信されません。ブラウザのデータを消すと記録も消えるので、ときどき書き出しておくと安心です。目標${state.goals.length}件・記録${state.entries.length}件。</p>`, {
+    change(t) { if (t.name === 'theme') { state.theme = t.value; applyTheme(); save(); } }
+  });
+}
+function moveGoal(id, d) {
+  const i = state.goals.findIndex(g => g.id === id), j = i + d;
+  if (i < 0 || j < 0 || j >= state.goals.length) return;
+  [state.goals[i], state.goals[j]] = [state.goals[j], state.goals[i]];
+  save(); render(); settingsSheet();
+}
+function exportData() {
+  const blob = new Blob([JSON.stringify({ app: 'money-goals', exportedAt: new Date().toISOString(), ...state }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `money-goals-${dayStr().replace(/-/g, '')}.json`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast('バックアップを書き出しました');
+}
+async function importData(file) {
+  let data;
+  try { data = JSON.parse(await file.text()); } catch (e) { toast('ファイルを読み込めませんでした'); return; }
+  const next = normalize(data);
+  if (!next.goals.length) { toast('目標が入っていないファイルです'); return; }
+  if (!confirm(`目標${next.goals.length}件・記録${next.entries.length}件で、いまのデータを置き換えます。よろしいですか？`)) return;
+  snap(); state = next; applyTheme(); closeSheet(); commit('バックアップを読み込みました', true);
+}
+function applyTheme() {
+  const r = document.documentElement;
+  if (state.theme === 'auto') r.removeAttribute('data-theme'); else r.setAttribute('data-theme', state.theme);
+  const dark = state.theme === 'dark' || (state.theme === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.querySelector('meta[name="theme-color"]').content = dark ? '#14161b' : '#f4f5f9';
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+
 /* ---------- 操作 ---------- */
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-act]'); if (!t) return;
   const a = t.dataset.act, d = t.dataset;
   if (a === 'tab') { view = d.view; try { localStorage.setItem(VIEW_KEY, view); } catch (err) {} render(); scrollTo(0, 0); }
+  else if (a === 'settings') settingsSheet();
+  else if (a === 'close') closeSheet();
+  else if (a === 'goal-move') moveGoal(d.id, +d.d);
+  else if (a === 'export') exportData();
+  else if (a === 'import') $('#importFile').click();
   else if (a === 'goal-new') goalSheet();
   else if (a === 'goal-edit') goalSheet(d.id);
   else if (a === 'goal-archive') archiveGoal(d.id);
@@ -548,9 +603,11 @@ document.addEventListener('click', e => {
 });
 
 document.addEventListener('change', e => {
+  if (e.target.id === 'importFile' && e.target.files[0]) importData(e.target.files[0]);
   if (e.target.id === 'dayPick' && isDay(e.target.value)) { dayView = e.target.value; render(); }
 });
 
+applyTheme();
 render();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
