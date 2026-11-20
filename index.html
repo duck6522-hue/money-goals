@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#f4f5f9">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="お金の目標">
+<meta name="description" content="カテゴリごとの目標額に対して、いまどこにいるかを端末の中だけで追う自分用アプリ。">
+<title>お金の目標</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap">
+<style>
+  :root {
+    --bg: #f4f5f9; --card: #fff; --field: #f1f2f7; --text: #1c1e26; --muted: #6b7080; --line: #e3e5ec;
+    --danger: #d92d3a; --warn: #d9620a; --ok: #0a8f5b;
+    --p1: #0f9f6e; --p2: #0b7c8c;
+    --pt: color-mix(in srgb, var(--p2) 82%, #000);
+    --tint: color-mix(in srgb, var(--p1) 12%, transparent);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #14161b; --card: #1f222a; --field: #2a2e38; --text: #e8e9ee; --muted: #9a9eab; --line: #2f333d; --danger: #ff6b76; --warn: #ffa24d; --ok: #3ddc97;
+      --pt: color-mix(in srgb, var(--p1) 55%, #fff); --tint: color-mix(in srgb, var(--p1) 22%, transparent); color-scheme: dark; }
+  }
+  :root[data-theme="dark"] { --bg: #14161b; --card: #1f222a; --field: #2a2e38; --text: #e8e9ee; --muted: #9a9eab; --line: #2f333d; --danger: #ff6b76; --warn: #ffa24d; --ok: #3ddc97;
+    --pt: color-mix(in srgb, var(--p1) 55%, #fff); --tint: color-mix(in srgb, var(--p1) 22%, transparent); color-scheme: dark; }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 "Noto Sans JP", -apple-system, "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif; -webkit-tap-highlight-color: transparent; }
+  .gut { max-width: 760px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  h1, h2, h3, p, ul { margin: 0; padding: 0; }
+  ul { list-style: none; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; border: none; background: var(--field); border-radius: 12px; padding: 8px 14px; font-weight: 700; }
+  button:focus-visible, a:focus-visible, input:focus-visible, .pick input:focus-visible + span { outline: 2px solid var(--p1); outline-offset: 2px; }
+  button.primary { background: linear-gradient(135deg, var(--p1), var(--p2)); color: #fff; font-weight: 900; }
+  button.wide { width: 100%; min-height: 50px; border-radius: 16px; font-size: 16px; }
+  button.text { background: none; color: var(--muted); padding: 6px 8px; }
+  button.danger { color: var(--danger); }
+  input[type=text], input[type=date], input[type=number], textarea {
+    background: var(--field); border: 1px solid transparent; border-radius: 14px; padding: 10px 14px; min-width: 0; width: 100%; font-size: 16px; }
+  .num, .yen { font-variant-numeric: tabular-nums; }
+
+  /* ヘッダー + タブ */
+  .appbar { position: sticky; top: 0; z-index: 10; background: var(--bg); padding-top: env(safe-area-inset-top, 0px); }
+  .top { display: flex; align-items: center; justify-content: space-between; padding-top: 12px; padding-bottom: 4px; }
+  h1 { font-size: 22px; font-weight: 900; letter-spacing: -1px; color: var(--p1); background: linear-gradient(135deg, var(--p1), var(--p2)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .iconbtn { width: 44px; height: 44px; padding: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; color: var(--muted); }
+  .iconbtn:hover { background: var(--field); }
+  .tabs { display: flex; border-bottom: 1px solid var(--line); }
+  .tabs button { flex: 1; background: none; border-radius: 0; padding: 11px 2px 10px; color: var(--muted); position: relative; font-size: 14px; white-space: nowrap; }
+  .tabs button[aria-selected="true"] { color: var(--pt); font-weight: 900; }
+  .tabs button[aria-selected="true"]::after { content: ""; position: absolute; left: 50%; bottom: -1px; width: 44px; height: 3px; border-radius: 3px 3px 0 0; background: linear-gradient(90deg, var(--p1), var(--p2)); transform: translateX(-50%); }
+  main { padding-top: 14px; padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px)); }
+
+  /* 集計カード */
+  .summary { padding: 18px 22px; border-radius: 24px; color: #fff; margin-bottom: 14px;
+    background: linear-gradient(135deg, var(--p1), var(--p2)); box-shadow: 0 6px 16px color-mix(in srgb, var(--p1) 25%, transparent); }
+  .summary .lab { opacity: .9; font-weight: 700; font-size: 13px; }
+  .summary .big { font-size: 34px; font-weight: 900; letter-spacing: -1px; line-height: 1.25; font-variant-numeric: tabular-nums; }
+  .summary .big small { font-size: 15px; font-weight: 700; opacity: .9; letter-spacing: 0; margin-left: 6px; }
+  .summary .bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,.3); margin-top: 10px; overflow: hidden; }
+  .summary .bar i { display: block; height: 100%; border-radius: 4px; background: #fff; transition: width .25s; }
+  .summary .cols { display: flex; gap: 22px; margin-top: 6px; font-size: 14px; flex-wrap: wrap; }
+
+  /* チップ（クイック入力） */
+  .suglab { font-size: 12px; font-weight: 700; color: var(--muted); margin: 4px 2px 6px; }
+  .chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: none; margin: 0 -2px; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chips.wrap { flex-wrap: wrap; overflow: visible; }
+  .chip { flex: none; display: inline-flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 8px 14px 8px 12px; font-size: 15px; white-space: nowrap; }
+  .chip.new { color: var(--pt); background: var(--tint); border-color: transparent; }
+  .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--gc, var(--muted)); }
+
+  /* 目標カード */
+  .sec { font-size: 13px; font-weight: 900; color: var(--muted); margin: 18px 4px 8px; display: flex; justify-content: space-between; align-items: baseline; }
+  .goals { display: grid; gap: 10px; }
+  .goal { background: var(--card); border-radius: 18px; display: flex; flex-direction: column; overflow: hidden; }
+  .goal .hd { display: flex; align-items: center; gap: 8px; padding: 12px 8px 0 16px; }
+  .goal .hd b { font-size: 16px; font-weight: 900; overflow-wrap: anywhere; }
+  .goal .hd .tag { font-size: 11px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+  .goal .hd .sp { flex: 1; }
+  .goal .plus { flex: none; width: 40px; height: 40px; padding: 0; border-radius: 50%; font-size: 22px; line-height: 1; color: var(--pt); background: var(--tint); }
+  .goal .body { background: none; border-radius: 0; text-align: left; padding: 6px 16px 14px; font-weight: 400; display: flex; flex-direction: column; gap: 6px; width: 100%; }
+  .nums { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+  .nums b { font-size: 24px; font-weight: 900; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+  .nums span { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .nums em { margin-left: auto; font-style: normal; font-weight: 900; font-size: 18px; font-variant-numeric: tabular-nums; color: color-mix(in srgb, var(--gc) 70%, var(--text)); }
+  .gbar { position: relative; height: 10px; border-radius: 5px; background: var(--field); }
+  .gbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; background: var(--gc); transition: width .25s; }
+  .gbar.over i { background: var(--danger); }
+  .gbar s { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--text); opacity: .45; }
+  .meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+  .meta .left b { font-weight: 900; font-variant-numeric: tabular-nums; }
+  .sub { font-size: 12px; color: var(--muted); }
+  .sub b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .pace { flex: none; font-size: 12px; font-weight: 900; padding: 2px 10px; border-radius: 10px; white-space: nowrap; color: var(--pt); background: var(--tint); }
+  .pace.ahead, .pace.done { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+  .pace.behind { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+  .pace.missed { color: var(--danger); background: color-mix(in srgb, var(--danger) 13%, transparent); }
+  .pace.before, .pace.none { color: var(--muted); background: var(--field); }
+
+  /* 一覧の行 */
+  .card { background: var(--card); border-radius: 18px; overflow: hidden; }
+  .card.pad { padding: 14px 16px; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 10px 16px; min-height: 54px; border-top: 1px solid var(--line); width: 100%; background: none; border-radius: 0; text-align: left; font-weight: 400; }
+  .row:first-child { border-top: 0; }
+  .row .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .row .tx b { font-weight: 700; overflow-wrap: anywhere; }
+  .row .tx small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  .row .amt { flex: none; font-weight: 900; font-variant-numeric: tabular-nums; text-align: right; }
+  .row .amt small { display: block; font-weight: 700; font-size: 12px; color: var(--muted); }
+  .meter { display: block; height: 6px; border-radius: 3px; background: var(--field); margin-top: 5px; overflow: hidden; }
+  .meter i { display: block; height: 100%; border-radius: 3px; background: var(--gc, var(--p1)); }
+  .good { color: var(--ok); } .bad { color: var(--danger); } .warn { color: var(--warn); }
+  .empty { text-align: center; color: var(--muted); padding: 36px 16px; }
+  .empty b { display: block; font-size: 16px; color: var(--text); margin-bottom: 4px; }
+  .empty button { margin-top: 14px; }
+
+  /* 日付・月のナビ */
+  .mnav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; }
+  .mnav b, .mnav label { font-size: 16px; font-weight: 900; min-width: 130px; text-align: center; position: relative; }
+  .mnav label input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
+  .mnav button { width: 40px; height: 40px; padding: 0; border-radius: 50%; font-size: 20px; line-height: 1; }
+  .mnav button:disabled { opacity: .35; cursor: default; }
+  .mnav .today { width: auto; border-radius: 14px; padding: 0 12px; font-size: 13px; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 4px; }
+  .stat { background: var(--card); border-radius: 18px; padding: 12px 14px; }
+  .stat span { display: block; font-size: 12px; font-weight: 700; color: var(--muted); }
+  .stat b { display: block; font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+  .stat small { display: block; font-size: 12px; color: var(--muted); }
+
+  /* トースト */
+  .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 30;
+    background: #23262f; color: #fff; border-radius: 14px; padding: 10px 10px 10px 16px; display: flex; align-items: center; gap: 10px; width: max-content; max-width: calc(100vw - 32px); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 6px 20px rgba(0,0,0,.25); font-size: 14px; }
+  .toast button { background: rgba(255,255,255,.16); color: #fff; flex: none; }
+
+  /* シート */
+  dialog { margin: auto auto 0; width: 100%; max-width: 760px; max-height: 92dvh; border: 0; padding: 0; border-radius: 24px 24px 0 0; background: var(--card); color: var(--text); overflow: auto; }
+  dialog::backdrop { background: rgba(10,12,18,.5); }
+  @media (min-width: 800px) { dialog { margin: auto; border-radius: 24px; } }
+  .sheet { padding: 20px max(18px, env(safe-area-inset-right, 0px)) calc(20px + env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 14px; }
+  .sheet h2 { font-size: 18px; font-weight: 900; display: flex; align-items: center; gap: 8px; }
+  .sheet h2 .sp { flex: 1; }
+  .sheet .f { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 700; color: var(--muted); }
+  .sheet .f > input, .sheet .f > div { color: var(--text); }
+  .sheet .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .sheet .acts { display: flex; gap: 10px; align-items: center; }
+  .sheet .acts .primary { flex: 1; }
+  .bigamt { font-size: 28px !important; font-weight: 900; text-align: right; font-variant-numeric: tabular-nums; padding: 12px 16px !important; }
+  .pick { position: relative; flex: none; }
+  .pick input { position: absolute; opacity: 0; inset: 0; margin: 0; }
+  .pick span { display: flex; align-items: center; gap: 6px; background: var(--field); border-radius: 18px; padding: 7px 13px; font-size: 14px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+  .pick input:checked + span { background: linear-gradient(135deg, var(--p1), var(--p2)); color: #fff; }
+  .pick input:checked + span .dot { box-shadow: 0 0 0 2px #fff; }
+  .seg { display: flex; background: var(--field); border-radius: 14px; padding: 3px; }
+  .seg .pick { flex: 1; }
+  .seg .pick span { background: none; justify-content: center; border-radius: 11px; padding: 9px 4px; }
+  .seg .pick small { font-weight: 400; font-size: 11px; opacity: .85; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+  .swatches .pick span { width: 36px; height: 36px; padding: 0; border-radius: 50%; background: var(--sw); }
+  .swatches .pick input:checked + span { background: var(--sw); box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--sw); }
+  .note { color: var(--muted); font-size: 12px; }
+  .menu { display: flex; flex-direction: column; gap: 8px; }
+  .menu button { text-align: left; padding: 13px 16px; border-radius: 14px; display: flex; flex-direction: column; }
+  .menu button small { font-weight: 400; color: var(--muted); font-size: 12px; }
+  .mgr { display: flex; align-items: center; gap: 6px; padding: 6px 4px 6px 12px; border-top: 1px solid var(--line); min-height: 52px; }
+  .mgr:first-child { border-top: 0; }
+  .mgr .tx { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-weight: 700; overflow-wrap: anywhere; }
+  .mgr .tx small { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .mgr.off .tx { color: var(--muted); }
+  .mgr button { flex: none; padding: 6px 10px; font-size: 13px; }
+  .mgr button.ic { width: 34px; height: 34px; padding: 0; }
+  .mgr button:disabled { opacity: .3; cursor: default; }
+</style>
+</head>
+<body>
+<div class="appbar">
+  <div class="top gut">
+    <h1>お金の目標</h1>
+    <button class="iconbtn" data-act="settings" aria-label="設定とバックアップ">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.8 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3.2 14H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </div>
+  <div class="tabs gut" role="tablist">
+    <button role="tab" data-act="tab" data-view="home" aria-selected="true">目標</button>
+    <button role="tab" data-act="tab" data-view="day" aria-selected="false">日次</button>
+    <button role="tab" data-act="tab" data-view="month" aria-selected="false">月次</button>
+  </div>
+</div>
+
+<main class="gut">
+  <section id="v-home"></section>
+  <section id="v-day" hidden></section>
+  <section id="v-month" hidden></section>
+</main>
+
+<div class="toast" id="toast" role="status" hidden><span id="toastMsg"></span><button id="toastUndo" data-act="undo">元に戻す</button></div>
+<dialog id="sheet"><form class="sheet" id="sheetForm" method="dialog"></form></dialog>
+
+<script src="calc.js"></script>
+<script>
+'use strict';
+const KEY = 'money-goals.v1', VIEW_KEY = 'money-goals.view';
+const { dayStr, dayDate, addDays, addMonths } = Calc;
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const WD = ['日', '月', '火', '水', '木', '金', '土'];
+const fmtDay = s => { const d = dayDate(s); return `${d.getMonth() + 1}/${d.getDate()}（${WD[d.getDay()]}）`; };
+const fmtShort = s => { const d = dayDate(s); return `${d.getMonth() + 1}/${d.getDate()}`; };
+const fmtFull = s => { const d = dayDate(s); return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`; };
+const ymLabel = ym => `${+ym.slice(0, 4)}年${+ym.slice(5)}月`;
+const yen = n => (n < 0 ? '−¥' : '¥') + Math.abs(Math.round(n)).toLocaleString('ja-JP');
+const signed = n => (n > 0 ? '+' : n < 0 ? '−' : '±') + '¥' + Math.abs(Math.round(n)).toLocaleString('ja-JP');
+const pct = r => Math.round(r * 100) + '%';
+
+const COLORS = ['#16a36a', '#0a9a9a', '#2f7fd9', '#5b6bd6', '#8a5cd6', '#d6408f', '#d9483b', '#e07a12', '#b88a00', '#6b7585'];
+const TYPE = { limit: '上限', save: '貯金' };
+
+/* ---------- 保存 ---------- */
+const fresh = () => ({ v: 1, goals: [], entries: [], theme: 'auto' });
+const isDay = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+function normalize(s) {
+  const out = fresh();
+  if (!s || typeof s !== 'object') return out;
+  for (const g of Array.isArray(s.goals) ? s.goals : []) {
+    if (!g || !g.id || !String(g.name || '').trim() || !(+g.amount > 0)) continue;
+    const range = g.period === 'range' && isDay(g.start) && isDay(g.end) && g.start <= g.end;
+    out.goals.push({ id: String(g.id), name: String(g.name).trim().slice(0, 40), type: g.type === 'save' ? 'save' : 'limit', amount: Math.round(+g.amount),
+      period: range ? 'range' : 'monthly', start: range ? g.start : '', end: range ? g.end : '', color: COLORS.includes(g.color) ? g.color : COLORS[0],
+      archived: !!g.archived, createdAt: +g.createdAt || Date.now() });
+  }
+  const ids = new Set(out.goals.map(g => g.id));
+  for (const e of Array.isArray(s.entries) ? s.entries : []) {
+    if (!e || !ids.has(e.goalId) || !isDay(e.date) || !Number.isFinite(+e.amount) || !+e.amount) continue;
+    out.entries.push({ id: String(e.id || uid()), date: e.date, goalId: e.goalId, amount: Math.round(+e.amount), memo: String(e.memo || '').slice(0, 100), createdAt: +e.createdAt || Date.now() });
+  }
+  out.theme = ['auto', 'light', 'dark'].includes(s.theme) ? s.theme : 'auto';
+  return out;
+}
+function load() { try { const raw = localStorage.getItem(KEY); if (raw) return normalize(JSON.parse(raw)); } catch (e) {} return fresh(); }
+let saveOk = true;
+function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); saveOk = true; } catch (e) { if (saveOk) toast('この端末に保存できませんでした（プライベートブラウズ中かもしれません）'); saveOk = false; } }
+
+let state = load();
+let view = 'home', dayView = dayStr(), monthView = dayStr().slice(0, 7);
+try { const v = localStorage.getItem(VIEW_KEY); if (['home', 'day', 'month'].includes(v)) view = v; } catch (e) {}
+
+const goalById = id => state.goals.find(g => g.id === id);
+const liveGoals = () => state.goals.filter(g => !g.archived);
+const periodLabel = g => g.period === 'monthly' ? '毎月' : `${fmtShort(g.start)}〜${g.end.slice(0, 4) !== g.start.slice(0, 4) ? fmtFull(g.end) : fmtShort(g.end)}`;
+
+/* ---------- 描画 ---------- */
+function render() {
+  document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.view === view)));
+  for (const v of ['home', 'day', 'month']) $('#v-' + v).hidden = v !== view;
+  if (view === 'home') renderHome();
+  else if (view === 'day') renderDay();
+  else renderMonth();
+}
+
+function renderHome() {
+  const goals = liveGoals();
+  if (!goals.length) {
+    $('#v-home').innerHTML = `<div class="empty"><b>まだ目標がありません</b>「食費は月3万円まで」「旅行資金を3か月で10万円」のように、<br>カテゴリごとの目標をつくりましょう。<br><button class="primary wide" data-act="goal-new">＋ 最初の目標をつくる</button></div>`;
+    return;
+  }
+  $('#v-home').innerHTML = `<div class="sec">目標</div><div class="goals">${goals.map(g => `<article class="goal" style="--gc:${g.color}">
+      <div class="hd"><span class="dot"></span><b>${esc(g.name)}</b><span class="tag">${TYPE[g.type]}・${periodLabel(g)}</span><span class="sp"></span></div>
+      <button class="body" data-act="goal-edit" data-id="${g.id}"><div class="nums"><span>目標</span><b>${yen(g.amount)}</b></div></button>
+    </article>`).join('')}</div>
+    <button class="text" data-act="goal-new" style="margin-top:10px">＋ 目標を追加</button>`;
+}
+function renderDay() { $('#v-day').innerHTML = ''; }
+function renderMonth() { $('#v-month').innerHTML = ''; }
+
+/* ---------- トースト ---------- */
+let toastTimer, undoSnap = null;
+function toast(msg, undo) {
+  $('#toastMsg').textContent = msg; $('#toastUndo').hidden = !undo; $('#toast').hidden = false;
+  if (!undo) undoSnap = null;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('#toast').hidden = true; }, undo ? 6000 : 2600);
+}
+const snap = () => { undoSnap = JSON.stringify(state); };
+function commit(msg, undo) { save(); render(); if (msg) toast(msg, undo); }
+
+/* ---------- シート ---------- */
+const sheet = $('#sheet'), sheetForm = $('#sheetForm');
+let sheetCtx = null;
+function openSheet(html, ctx = {}) { sheetCtx = ctx; sheetForm.innerHTML = html; if (!sheet.open) sheet.showModal(); }
+function closeSheet() { if (sheet.open) sheet.close(); sheetCtx = null; }
+sheet.addEventListener('click', e => { if (e.target === sheet) closeSheet(); });
+sheetForm.addEventListener('submit', e => { e.preventDefault(); const c = sheetCtx; if (c && c.submit) c.submit(new FormData(sheetForm)); });
+sheetForm.addEventListener('change', e => { const c = sheetCtx; if (c && c.change) c.change(e.target); });
+const seg = (name, opts, cur) => `<div class="seg">${opts.map(([v, l]) => `<label class="pick"><input type="radio" name="${name}" value="${v}" ${v === cur ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>`;
+
+/* ---------- 目標の作成・編集 ---------- */
+function goalSheet(id) {
+  const g = id ? goalById(id) : null, today = dayStr();
+  const usedColors = new Set(liveGoals().map(x => x.color));
+  const color = g ? g.color : (COLORS.find(c => !usedColors.has(c)) || COLORS[0]);
+  const type = g ? g.type : 'limit', period = g ? g.period : 'monthly';
+  const start = g && g.start ? g.start : today, end = g && g.end ? g.end : addDays(dayStr(new Date(dayDate(today).setMonth(dayDate(today).getMonth() + 3))), -1);
+  openSheet(`<h2>${g ? '目標を編集' : '目標をつくる'}</h2>
+    <label class="f"><span>名前</span><input type="text" name="name" value="${esc(g ? g.name : '')}" maxlength="40" required placeholder="食費、貯金、旅行資金 など"></label>
+    <div class="f"><span>タイプ</span>${seg('type', [['limit', '上限<small>いくらまで使う</small>'], ['save', '貯金<small>いくら貯める</small>']], type)}</div>
+    <label class="f"><span id="amtLab">${type === 'limit' ? '使ってよい上限（円）' : '貯める目標額（円）'}</span><input type="number" name="amount" value="${g ? g.amount : ''}" min="1" step="1" inputmode="numeric" required placeholder="例：30000"></label>
+    <div class="f"><span>期間</span>${seg('period', [['monthly', '毎月<small>月ごとにリセット</small>'], ['range', '期限付き<small>開始日〜終了日</small>']], period)}</div>
+    <div class="two" id="rangeF" ${period === 'range' ? '' : 'hidden'}><label class="f"><span>開始日</span><input type="date" name="start" value="${start}"></label><label class="f"><span>終了日</span><input type="date" name="end" value="${end}"></label></div>
+    <div class="f"><span>色</span><div class="swatches">${COLORS.map(c => `<label class="pick"><input type="radio" name="color" value="${c}" ${c === color ? 'checked' : ''} aria-label="色 ${c}"><span style="--sw:${c}"></span></label>`).join('')}</div></div>
+    ${g ? `<p class="note">金額や期間を変えると、過去の月の達成状況も新しい目標額で計算し直します。</p>` : ''}
+    <div class="acts">${g ? `<button type="button" class="text" data-act="goal-archive" data-id="${g.id}">${g.archived ? '一覧に戻す' : 'アーカイブ'}</button>` : ''}<button class="primary wide">${g ? '保存' : 'つくる'}</button></div>
+    ${g ? `<button type="button" class="text danger" data-act="goal-del" data-id="${g.id}" style="align-self:center">この目標と記録を削除</button>` : ''}`, {
+    change(t) {
+      if (t.name === 'period') $('#rangeF').hidden = t.value !== 'range';
+      if (t.name === 'type') $('#amtLab').textContent = t.value === 'limit' ? '使ってよい上限（円）' : '貯める目標額（円）';
+    },
+    submit(fd) {
+      const name = String(fd.get('name')).trim(), amount = Math.round(+fd.get('amount'));
+      if (!name || !(amount > 0)) return;
+      const per = fd.get('period'), s = String(fd.get('start')), e = String(fd.get('end'));
+      if (per === 'range' && !(isDay(s) && isDay(e) && s <= e)) { toast('終了日は開始日より後にしてください'); return; }
+      const data = { name, amount, type: fd.get('type') === 'save' ? 'save' : 'limit', period: per === 'range' ? 'range' : 'monthly',
+        start: per === 'range' ? s : '', end: per === 'range' ? e : '', color: fd.get('color') || COLORS[0] };
+      if (g) Object.assign(g, data); else state.goals.push({ id: uid(), ...data, archived: false, createdAt: Date.now() });
+      closeSheet(); commit(g ? '目標を保存しました' : `「${name}」をつくりました`);
+    }
+  });
+  if (!g) sheetForm.elements.name.focus();
+}
+function archiveGoal(id) {
+  const g = goalById(id); if (!g) return;
+  snap(); g.archived = !g.archived; closeSheet();
+  commit(g.archived ? `「${g.name}」をアーカイブしました（設定から戻せます）` : `「${g.name}」を一覧に戻しました`, true);
+}
+function deleteGoal(id) {
+  const g = goalById(id); if (!g) return;
+  const n = state.entries.filter(e => e.goalId === id).length;
+  if (!confirm(`「${g.name}」と、その記録${n}件を削除します。よろしいですか？`)) return;
+  snap(); state.goals = state.goals.filter(x => x.id !== id); state.entries = state.entries.filter(e => e.goalId !== id);
+  closeSheet(); commit(`「${g.name}」を削除しました`, true);
+}
+
+/* ---------- 操作 ---------- */
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-act]'); if (!t) return;
+  const a = t.dataset.act, d = t.dataset;
+  if (a === 'tab') { view = d.view; try { localStorage.setItem(VIEW_KEY, view); } catch (err) {} render(); scrollTo(0, 0); }
+  else if (a === 'goal-new') goalSheet();
+  else if (a === 'goal-edit') goalSheet(d.id);
+  else if (a === 'goal-archive') archiveGoal(d.id);
+  else if (a === 'goal-del') deleteGoal(d.id);
+  else if (a === 'undo') { if (undoSnap) { state = normalize(JSON.parse(undoSnap)); undoSnap = null; $('#toast').hidden = true; commit(); } }
+});
+
+render();
+if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
