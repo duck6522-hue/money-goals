@@ -17,7 +17,7 @@ test('日付の補助関数', () => {
 });
 
 test('月次の目標は基準日の月だけを集計する', () => {
-  const es = [e('2026-10-31', 'f', 5000), e('2026-11-01', 'f', 1000), e('2026-11-30', 'f', 2000), e('2026-11-10', 't', 9999)];
+  const es = [e('2026-10-31', 'f', 5000), e('2026-11-01', 'f', 1000), e('2026-11-15', 'f', 2000), e('2026-11-16', 'f', 7777), e('2026-11-10', 't', 9999)];
   const p = C.progress(food, es, '2026-11-15');
   assert.equal(p.current, 3000);
   assert.equal(p.start, '2026-11-01');
@@ -60,6 +60,17 @@ test('期間の前と後', () => {
   assert.equal(C.progress(trip, [e('2026-12-01', 't', 100000)], '2027-02-01').pace, 'done');
   assert.equal(C.progress(trip, [e('2026-12-01', 't', 99999)], '2027-02-01').pace, 'missed');
   assert.equal(C.progress(trip, [], '2027-02-01').perDay, null);
+});
+
+test('今日より先の日付の記録は数えない', () => {
+  const es = [e('2026-11-05', 't', 30000), e('2026-11-25', 't', 15000)];
+  assert.equal(C.progress(trip, es, '2026-11-20').current, 30000);
+  assert.equal(C.progress(trip, es, '2026-11-25').current, 45000);
+  assert.equal(C.progress(trip, es, '2026-10-31').current, 0);
+  // 過去の月の判定に、あとの月の記録がまざらない
+  const oct = C.monthRow({ ...trip, start: '2026-10-01', end: '2026-12-31' }, [e('2026-10-25', 't', 30000), e('2026-11-25', 't', 15000)], '2026-10', '2026-11-30');
+  assert.equal(oct.cumulative, 30000);
+  assert.equal(oct.pace, 'ontrack');
 });
 
 test('マイナスの記録（引き出し・返金）は差し引く', () => {

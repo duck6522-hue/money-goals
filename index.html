@@ -122,7 +122,7 @@
   .row .amt small { display: block; font-weight: 700; font-size: 12px; color: var(--muted); }
   .meter { display: block; height: 6px; border-radius: 3px; background: var(--field); margin-top: 5px; overflow: hidden; }
   .meter i { display: block; height: 100%; border-radius: 3px; background: var(--gc, var(--p1)); }
-  .good { color: var(--ok); } .bad { color: var(--danger); } .warn { color: var(--warn); }
+  .good, .row .amt small.good { color: var(--ok); } .bad, .row .amt small.bad { color: var(--danger); } .warn { color: var(--warn); }
   .empty { text-align: center; color: var(--muted); padding: 36px 16px; }
   .empty b { display: block; font-size: 16px; color: var(--text); margin-bottom: 4px; }
   .empty button { margin-top: 14px; }
@@ -136,7 +136,7 @@
   .mnav .today { width: auto; border-radius: 14px; padding: 0 12px; font-size: 13px; }
   .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 4px; }
   .stat { background: var(--card); border-radius: 18px; padding: 12px 14px; }
-  .stat span { display: block; font-size: 12px; font-weight: 700; color: var(--muted); }
+  .stat > span { display: block; font-size: 12px; font-weight: 700; color: var(--muted); }
   .stat b { display: block; font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
   .stat small { display: block; font-size: 12px; color: var(--muted); }
 
@@ -350,7 +350,62 @@ function renderDay() {
       : `<div class="empty"><b>${d === today ? '今日' : 'この日'}の記録はありません</b></div>`}
     ${state.goals.length ? `<button class="primary wide" data-act="add" data-date="${d}" style="margin-top:16px">＋ ${d === today ? '今日' : fmtDay(d)}に記録</button>` : ''}`;
 }
-function renderMonth() { $('#v-month').innerHTML = ''; }
+function monthBadge(g, r) {
+  const isL = g.type === 'limit';
+  if (r.status === 'done') return ['done', isL ? '上限内' : '達成'];
+  if (r.status === 'missed') return ['missed', isL ? '超過' : '未達'];
+  if (isL && g.period === 'monthly' && r.actual > r.target) return ['missed', '超過'];
+  if (r.pace === 'done') return ['done', '達成'];
+  return [r.pace, PACE[r.pace]];
+}
+function firstMonth() {
+  let m = dayStr().slice(0, 7);
+  for (const e of state.entries) if (e.date.slice(0, 7) < m) m = e.date.slice(0, 7);
+  for (const g of state.goals) { const c = g.period === 'range' ? g.start.slice(0, 7) : dayStr(new Date(g.createdAt)).slice(0, 7); if (c < m) m = c; }
+  return m;
+}
+function renderMonth() {
+  const today = dayStr(), cur = today.slice(0, 7), first = firstMonth();
+  if (monthView > cur) monthView = cur;
+  if (monthView < first) monthView = first;
+  const ym = monthView, isCur = ym === cur;
+  const inMonth = (e, m) => e.date.slice(0, 7) === m;
+  const goals = state.goals.filter(g => Calc.activeInMonth(g, ym) && (!g.archived || state.entries.some(e => e.goalId === g.id && inMonth(e, ym))));
+  const rows = goals.map(g => [g, Calc.monthRow(g, state.entries, ym, today)]);
+  const badges = rows.map(([g, r]) => monthBadge(g, r)[0]);
+  const good = badges.filter(b => ['done', 'ontrack', 'ahead'].includes(b)).length;
+  const sumBy = (type, key) => rows.filter(([g]) => g.type === type).reduce((a, [, r]) => a + r[key], 0);
+  const spent = sumBy('limit', 'actual'), spentPrev = sumBy('limit', 'prevActual'), saved = sumBy('save', 'actual'), savedPrev = sumBy('save', 'prevActual');
+  const limitBudget = rows.filter(([g]) => g.type === 'limit' && g.period === 'monthly').reduce((a, [g]) => a + g.amount, 0);
+  const rowHtml = ([g, r]) => {
+    const [bc, bl] = monthBadge(g, r), isL = g.type === 'limit';
+    const diffCls = !r.diff ? '' : (r.diff > 0) === isL ? 'bad' : 'good';
+    const info = g.period === 'monthly' ? `目標 ${yen(r.target)}・${pct(r.rate)}` : `累計 ${yen(r.cumulative)} / ${yen(r.target)}（${pct(r.rate)}）`;
+    return `<div class="row" style="--gc:${bc === 'missed' && isL ? 'var(--danger)' : g.color}"><span class="dot" style="--gc:${g.color}"></span>
+      <span class="tx"><b>${esc(g.name)} <span class="pace ${bc}">${bl}</span></b><small>${TYPE[g.type]}・${g.period === 'monthly' ? '毎月' : '期限付き'}・${info}</small>
+        <span class="meter"><i style="width:${Math.max(0, Math.min(100, r.rate * 100))}%"></i></span></span>
+      <span class="amt">${yen(r.actual)}<small class="${diffCls}">前月比 ${r.actual || r.prevActual ? signed(r.diff) : '—'}</small></span></div>`;
+  };
+  const months = [...new Set(state.entries.map(e => e.date.slice(0, 7)))].filter(m => m !== ym && m <= cur).sort().reverse().slice(0, 24);
+  const otherHtml = m => {
+    const rs = state.goals.filter(g => Calc.activeInMonth(g, m)).map(g => [g, Calc.monthRow(g, state.entries, m, today)]);
+    const ok = rs.filter(([g, r]) => ['done', 'ontrack', 'ahead'].includes(monthBadge(g, r)[0])).length;
+    const sp = rs.filter(([g]) => g.type === 'limit').reduce((a, [, r]) => a + r.actual, 0), sv = rs.filter(([g]) => g.type === 'save').reduce((a, [, r]) => a + r.actual, 0);
+    return `<button class="row" data-act="month-go" data-ym="${m}"><span class="tx"><b>${ymLabel(m)}</b><small>${m === cur ? 'ペース内' : '達成'} ${ok}/${rs.length}</small></span>
+      <span class="amt"><small>使った ${yen(sp)}</small><small>貯めた ${yen(sv)}</small></span></button>`;
+  };
+  $('#v-month').innerHTML = `<div class="mnav"><button data-act="month" data-d="-1" aria-label="前の月" ${ym <= first ? 'disabled' : ''}>‹</button><b>${ymLabel(ym)}</b>
+      <button data-act="month" data-d="1" aria-label="次の月" ${isCur ? 'disabled' : ''}>›</button></div>
+    ${rows.length ? `<div class="stats">
+      <div class="stat"><span>${isCur ? 'ペース内の目標' : '達成した目標'}</span><b>${good} / ${rows.length}</b><small>${isCur ? `${+today.slice(8)}日時点` : '月末時点'}</small></div>
+      <div class="stat"><span>${isCur ? '今月' : 'この月'}使った額</span><b>${yen(spent)}</b><small>${limitBudget ? `上限 ${yen(limitBudget)}・` : ''}前月比 <span class="${spent > spentPrev ? 'bad' : spent < spentPrev ? 'good' : ''}">${signed(spent - spentPrev)}</span></small></div>
+      <div class="stat"><span>${isCur ? '今月' : 'この月'}貯めた額</span><b>${yen(saved)}</b><small>前月比 <span class="${saved > savedPrev ? 'good' : saved < savedPrev ? 'bad' : ''}">${signed(saved - savedPrev)}</span></small></div>
+      <div class="stat"><span>記録</span><b>${state.entries.filter(e => inMonth(e, ym) && goalById(e.goalId)).length}件</b><small>${new Set(state.entries.filter(e => inMonth(e, ym)).map(e => e.date)).size}日分</small></div></div>
+      <div class="sec"><span>カテゴリ別</span><span>${isCur ? '進行中' : ''}</span></div><div class="card">${rows.map(rowHtml).join('')}</div>`
+      : `<div class="empty"><b>この月の目標はありません</b></div>`}
+    ${months.length ? `<div class="sec"><span>ほかの月</span></div><div class="card">${months.map(otherHtml).join('')}</div>` : ''}
+    <p class="note" style="margin:14px 4px 0">上限タイプは「使った額」、貯金タイプは「貯めた額」です。期限付きの目標は、その月に動いた額と、月末（今月は今日）までの累計を表示します。</p>`;
+}
 
 /* ---------- トースト ---------- */
 let toastTimer, undoSnap = null;
@@ -483,6 +538,8 @@ document.addEventListener('click', e => {
   else if (a === 'goal-archive') archiveGoal(d.id);
   else if (a === 'goal-del') deleteGoal(d.id);
   else if (a === 'goal-open') goalDetail(d.id);
+  else if (a === 'month') { monthView = addMonths(monthView, +d.d); render(); }
+  else if (a === 'month-go') { monthView = d.ym; render(); scrollTo(0, 0); }
   else if (a === 'day') { dayView = +d.d ? addDays(dayView, +d.d) : dayStr(); render(); }
   else if (a === 'add') entrySheet({ goalId: d.id, date: d.date });
   else if (a === 'entry-edit') entrySheet({ id: d.id });

@@ -42,7 +42,8 @@
   function progress(goal, entries, today) {
     const { start, end } = periodOf(goal, today);
     const target = goal.amount;
-    const current = sumIn(entries, goal.id, start, end);
+    // 今日より先の日付の記録（予定として入れたもの）は、まだ数えない
+    const current = today < start ? 0 : sumIn(entries, goal.id, start, today < end ? today : end);
     const totalDays = daysBetween(start, end) + 1;
     let phase, elapsedDays;
     if (today < start) { phase = 'before'; elapsedDays = 0; }
