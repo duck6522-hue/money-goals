@@ -45,7 +45,8 @@
   button.danger { color: var(--danger); }
   input[type=text], input[type=date], input[type=number], textarea {
     background: var(--field); border: 1px solid transparent; border-radius: 14px; padding: 10px 14px; min-width: 0; width: 100%; font-size: 16px; }
-  .num, .yen { font-variant-numeric: tabular-nums; }
+  input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
 
   /* ヘッダー + タブ */
   .appbar { position: sticky; top: 0; z-index: 10; background: var(--bg); padding-top: env(safe-area-inset-top, 0px); }
@@ -86,6 +87,9 @@
   .goal .hd b { font-size: 16px; font-weight: 900; overflow-wrap: anywhere; }
   .goal .hd .tag { font-size: 11px; font-weight: 700; color: var(--muted); white-space: nowrap; }
   .goal .hd .sp { flex: 1; }
+  .goal.flat { background: var(--field); }
+  .goal.flat .body { padding-top: 14px; }
+  .goal.flat .gbar { background: var(--card); }
   .goal .plus { flex: none; width: 40px; height: 40px; padding: 0; border-radius: 50%; font-size: 22px; line-height: 1; color: var(--pt); background: var(--tint); }
   .goal .body { background: none; border-radius: 0; text-align: left; padding: 6px 16px 14px; font-weight: 400; display: flex; flex-direction: column; gap: 6px; width: 100%; }
   .nums { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
@@ -266,16 +270,64 @@ function render() {
   else renderMonth();
 }
 
+const PACE = { ontrack: 'ペース通り', ahead: '先行', behind: '遅れ', before: '開始前' };
+function paceOf(g, p) {
+  const isL = g.type === 'limit';
+  if (isL && p.phase === 'active' && p.current > p.target) return ['missed', '超過'];
+  if (p.pace === 'done') return ['done', isL ? '上限内' : '達成'];
+  if (p.pace === 'missed') return ['missed', isL ? '超過' : '未達'];
+  return [p.pace, PACE[p.pace]];
+}
+function remainHtml(g, p) {
+  if (g.type === 'limit') return p.remain >= 0 ? `のこり使える <b>${yen(p.remain)}</b>` : `<b class="bad">${yen(-p.remain)}</b> オーバー`;
+  return p.remain > 0 ? `のこり貯める <b>${yen(p.remain)}</b>` : `<b class="good">目標達成</b>${p.remain < 0 ? `（${signed(-p.remain)}）` : ''}`;
+}
+function paceDetail(g, p) {
+  if (p.phase !== 'active' || p.current > p.target && g.type === 'limit' || p.pace === 'done') return '';
+  const exp = p.target * p.elapsedRatio, d = p.paceDiff;
+  const word = Math.abs(d) < 1 ? 'ちょうど' : g.type === 'limit' ? (d < 0 ? `${yen(-d)} 少ない` : `${yen(d)} 多い`) : (d > 0 ? `${yen(d)} 多い` : `あと ${yen(-d)}`);
+  return `今日までの目安 ${yen(exp)}（${word}）`;
+}
+function subHtml(g, p) {
+  const isL = g.type === 'limit';
+  if (p.phase === 'before') return `${fmtDay(p.start)}から${!isL ? `・1日あたり <b>${yen(p.perDay)}</b> 必要` : ''}`;
+  if (p.phase === 'ended') return `${fmtFull(p.end)}で終了`;
+  if (p.remain <= 0) return isL ? `上限を超えています・残り${p.remainDays}日` : `残り${p.remainDays}日`;
+  return `1日あたり <b>${yen(p.perDay)}</b> ${isL ? '使える' : '必要'}・残り${p.remainDays}日`;
+}
+function goalCard(g, today, flat) {
+  const p = Calc.progress(g, state.entries, today), [pc, pl] = paceOf(g, p);
+  const over = g.type === 'limit' && p.current > p.target, det = paceDetail(g, p);
+  const body = flat ? 'div class="body"' : `button class="body" data-act="goal-open" data-id="${g.id}"`;
+  return `<article class="goal${flat ? ' flat' : ''}" style="--gc:${g.color}">
+    ${flat ? '' : `<div class="hd"><span class="dot"></span><b>${esc(g.name)}</b><span class="tag">${TYPE[g.type]}・${periodLabel(g)}</span><span class="sp"></span>
+      <button class="plus" data-act="add" data-id="${g.id}" aria-label="${esc(g.name)}に記録">＋</button></div>`}
+    <${body}>
+      <div class="nums"><b>${yen(p.current)}</b><span>/ ${yen(p.target)}</span><em>${pct(p.rate)}</em></div>
+      <div class="gbar${over ? ' over' : ''}" role="img" aria-label="達成率 ${pct(p.rate)}"><i style="width:${Math.max(0, Math.min(100, p.rate * 100))}%"></i>${p.phase === 'active' ? `<s style="left:${p.elapsedRatio * 100}%" title="今日までの目安"></s>` : ''}</div>
+      <div class="meta"><span class="left">${remainHtml(g, p)}</span><span class="pace ${pc}">${pl}</span></div>
+      <div class="sub">${subHtml(g, p)}${det ? `<br>${det}` : ''}</div>
+    </${flat ? 'div' : 'button'}>
+  </article>`;
+}
 function renderHome() {
-  const goals = liveGoals();
+  const goals = liveGoals(), today = dayStr();
   if (!goals.length) {
     $('#v-home').innerHTML = `<div class="empty"><b>まだ目標がありません</b>「食費は月3万円まで」「旅行資金を3か月で10万円」のように、<br>カテゴリごとの目標をつくりましょう。<br><button class="primary wide" data-act="goal-new">＋ 最初の目標をつくる</button></div>`;
     return;
   }
-  $('#v-home').innerHTML = `<div class="sec">目標</div><div class="goals">${goals.map(g => `<article class="goal" style="--gc:${g.color}">
-      <div class="hd"><span class="dot"></span><b>${esc(g.name)}</b><span class="tag">${TYPE[g.type]}・${periodLabel(g)}</span><span class="sp"></span></div>
-      <button class="body" data-act="goal-edit" data-id="${g.id}"><div class="nums"><span>目標</span><b>${yen(g.amount)}</b></div></button>
-    </article>`).join('')}</div>
+  const ps = goals.map(g => [g, Calc.progress(g, state.entries, today)]);
+  const act = ps.filter(([, p]) => p.phase === 'active');
+  const good = act.filter(([g, p]) => ['ontrack', 'ahead', 'done'].includes(paceOf(g, p)[0])).length;
+  const todays = state.entries.filter(e => e.date === today && goalById(e.goalId));
+  $('#v-home').innerHTML = `<div class="summary"><div class="lab">${fmtDay(today)}</div>
+      <div class="big">${act.length ? `ペース内 ${good}<small>/ ${act.length} 目標</small>` : `進行中の目標なし`}</div>
+      ${act.length ? `<div class="bar"><i style="width:${good / act.length * 100}%"></i></div>` : ''}
+      <div class="cols"><span>今日の記録 ${todays.length}件</span>${act.length - good ? `<span>遅れ・超過 ${act.length - good}件</span>` : ''}</div></div>
+    <div class="suglab">今日の記録を入れる</div>
+    <div class="chips">${goals.map(g => `<button class="chip" data-act="add" data-id="${g.id}" style="--gc:${g.color}"><span class="dot"></span>${esc(g.name)}</button>`).join('')}</div>
+    <div class="sec"><span>目標</span><span>| は今日までの目安</span></div>
+    <div class="goals">${goals.map(g => goalCard(g, today)).join('')}</div>
     <button class="text" data-act="goal-new" style="margin-top:10px">＋ 目標を追加</button>`;
 }
 function renderDay() { $('#v-day').innerHTML = ''; }
@@ -348,6 +400,60 @@ function deleteGoal(id) {
   closeSheet(); commit(`「${g.name}」を削除しました`, true);
 }
 
+/* ---------- 記録の入力・編集 ---------- */
+const DIR = { limit: [['+', '使った'], ['-', '返金・取り消し']], save: [['+', '貯めた'], ['-', '引き出した']] };
+function entrySheet({ id, goalId, date } = {}) {
+  const en = id ? state.entries.find(x => x.id === id) : null;
+  const goals = liveGoals();
+  if (en && !goals.some(g => g.id === en.goalId)) goals.push(goalById(en.goalId));
+  if (!goals.length) { goalSheet(); return; }
+  const gid = en ? en.goalId : (goals.some(g => g.id === goalId) ? goalId : goals[0].id);
+  const dirF = (g, dir) => `<div class="f"><span>種類</span>${seg('dir', DIR[g.type], dir)}</div>`;
+  openSheet(`<h2>${en ? '記録を編集' : '記録する'}</h2>
+    <div class="f"><span>カテゴリ</span><div class="chips wrap">${goals.map(g => `<label class="pick"><input type="radio" name="goal" value="${g.id}" ${g.id === gid ? 'checked' : ''}><span><i class="dot" style="--gc:${g.color}"></i>${esc(g.name)}</span></label>`).join('')}</div></div>
+    <div id="dirF">${dirF(goalById(gid), en && en.amount < 0 ? '-' : '+')}</div>
+    <label class="f"><span>金額（円）</span><input class="bigamt" type="number" name="amount" value="${en ? Math.abs(en.amount) : ''}" min="1" step="1" inputmode="numeric" required placeholder="0"></label>
+    <div class="two"><label class="f"><span>日付</span><input type="date" name="date" value="${en ? en.date : (date || dayStr())}" required></label>
+      <label class="f"><span>メモ（任意）</span><input type="text" name="memo" value="${esc(en ? en.memo : '')}" maxlength="100" placeholder="スーパー など"></label></div>
+    <div class="acts">${en ? `<button type="button" class="danger" data-act="entry-del" data-id="${en.id}">削除</button>` : ''}<button class="primary wide">${en ? '保存' : '記録する'}</button></div>`, {
+    change(t) {
+      if (t.name === 'goal') { const dir = (sheetForm.querySelector('input[name=dir]:checked') || {}).value || '+'; $('#dirF').innerHTML = dirF(goalById(t.value), dir); }
+    },
+    submit(fd) {
+      const g = goalById(fd.get('goal')), amt = Math.round(+fd.get('amount')), date = String(fd.get('date'));
+      if (!g || !(amt > 0) || !isDay(date)) return;
+      const amount = fd.get('dir') === '-' ? -amt : amt, memo = String(fd.get('memo')).trim();
+      snap();
+      if (en) Object.assign(en, { goalId: g.id, amount, date, memo });
+      else state.entries.push({ id: uid(), date, goalId: g.id, amount, memo, createdAt: Date.now() });
+      closeSheet();
+      commit(en ? '記録を保存しました' : `${g.name}に ${yen(amount)} を記録${date !== dayStr() ? `（${fmtDay(date)}）` : ''}`, true);
+    }
+  });
+  if (!en) sheetForm.elements.amount.focus();
+}
+function deleteEntry(id) {
+  const en = state.entries.find(x => x.id === id); if (!en) return;
+  snap(); state.entries = state.entries.filter(x => x.id !== id); closeSheet(); commit('記録を削除しました', true);
+}
+// byDate: 目標の詳細のように同じ目標の記録を並べるときは、名前のかわりに日付を見出しにする
+const entryRow = (en, byDate) => { const g = goalById(en.goalId), sign = en.amount < 0 ? `<small>${DIR[g.type][1][1]}</small>` : '';
+  return `<button class="row" data-act="entry-edit" data-id="${en.id}" style="--gc:${g.color}"><span class="dot"></span><span class="tx"><b>${byDate ? fmtDay(en.date) : esc(g.name)}</b>${en.memo ? `<small>${esc(en.memo)}</small>` : ''}</span><span class="amt">${yen(en.amount)}${sign}</span></button>`; };
+const byNewest = (a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt;
+
+/* ---------- 目標の詳細 ---------- */
+function goalDetail(id) {
+  const g = goalById(id); if (!g) return;
+  const p = Calc.progress(g, state.entries, dayStr());
+  const ens = state.entries.filter(e => e.goalId === id && e.date >= p.start && e.date <= p.end).sort(byNewest);
+  openSheet(`<h2><i class="dot" style="--gc:${g.color}"></i>${esc(g.name)}<span class="sp"></span><button type="button" data-act="goal-edit" data-id="${g.id}">編集</button></h2>
+    <p class="note">${TYPE[g.type]}タイプ・${g.period === 'monthly' ? '毎月リセット' : `${fmtFull(g.start)}〜${fmtFull(g.end)}`}・集計期間 ${fmtShort(p.start)}〜${fmtShort(p.end)}（${p.totalDays}日）</p>
+    ${goalCard(g, dayStr(), true)}
+    <div class="f"><span>この期間の記録（${ens.length}件）</span></div>
+    ${ens.length ? `<div class="card" style="background:var(--field);margin-top:-8px">${ens.map(en => entryRow(en, true)).join('')}</div>` : '<p class="note">まだ記録はありません。</p>'}
+    <button type="button" class="primary wide" data-act="add" data-id="${g.id}">＋ ${esc(g.name)}に記録</button>`);
+}
+
 /* ---------- 操作 ---------- */
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-act]'); if (!t) return;
@@ -357,6 +463,10 @@ document.addEventListener('click', e => {
   else if (a === 'goal-edit') goalSheet(d.id);
   else if (a === 'goal-archive') archiveGoal(d.id);
   else if (a === 'goal-del') deleteGoal(d.id);
+  else if (a === 'goal-open') goalDetail(d.id);
+  else if (a === 'add') entrySheet({ goalId: d.id, date: d.date });
+  else if (a === 'entry-edit') entrySheet({ id: d.id });
+  else if (a === 'entry-del') deleteEntry(d.id);
   else if (a === 'undo') { if (undoSnap) { state = normalize(JSON.parse(undoSnap)); undoSnap = null; $('#toast').hidden = true; commit(); } }
 });
 
